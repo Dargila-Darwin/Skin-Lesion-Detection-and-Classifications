@@ -1,0 +1,16 @@
+{
+  "temperature": 0.72,
+  "n_samples": 2695,
+  "before": {
+    "nll": 0.571839,
+    "ece": 0.066646,
+    "accuracy": 0.771429,
+    "avg_confidence": 0.707656
+  },
+  "after": {
+    "nll": 0.552125,
+    "ece": 0.021094,
+    "accuracy": 0.771429,
+    "avg_confidence": 0.763947
+  }
+}
