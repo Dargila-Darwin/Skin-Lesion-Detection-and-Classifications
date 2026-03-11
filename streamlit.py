@@ -238,6 +238,7 @@ def render_homepage() -> None:
         st.markdown("### What you get")
         st.markdown("- Predicted condition name")
         st.markdown("- Confidence percentage")
+        st.markdown("- Top-3 probability table")
         st.markdown("- Disease description and preventive guidance")
 
 
@@ -254,95 +255,18 @@ def render_about() -> None:
         unsafe_allow_html=True,
     )
 
-    cards = []
+    rows = []
     for disease in CLASS_NAMES:
-        if disease == "unknown":
-            continue
-        cards.append(
-            (
-                disease,
-                CLASS_INFO.get(disease, "No description available."),
-                PREVENTIVE_MEASURES.get(
+        rows.append(
+            {
+                "Disease": disease,
+                "Description": CLASS_INFO.get(disease, "No description available."),
+                "Preventive Measures": PREVENTIVE_MEASURES.get(
                     disease, "Consult a healthcare professional for guidance."
                 ),
-            )
+            }
         )
-
-    card_html = "\n".join(
-        f"""
-        <div class="note-card">
-            <div class="note-pill">Condition Profile</div>
-            <h3 class="note-title">{disease}</h3>
-            <div class="note-block">
-                <div class="note-label">Description</div>
-                <div class="note-text">{desc}</div>
-            </div>
-            <div class="note-block">
-                <div class="note-label">Preventive Measures</div>
-                <div class="note-text">{prev}</div>
-            </div>
-        </div>
-        """
-        for disease, desc, prev in cards
-    )
-
-    st.markdown(
-        f"""
-        <style>
-        .note-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 1.2rem;
-            margin-top: 0.6rem;
-        }}
-        .note-card {{
-            background: #ffffff;
-            border: 1px solid #d7e3ef;
-            border-radius: 14px;
-            padding: 1.1rem 1.2rem;
-            box-shadow: 0 8px 18px rgba(15, 39, 66, 0.08);
-        }}
-        .note-pill {{
-            display: inline-flex;
-            align-items: center;
-            padding: 0.2rem 0.7rem;
-            border-radius: 999px;
-            background: #e7f7ef;
-            color: #0f6b3d;
-            font-weight: 600;
-            font-size: 0.75rem;
-            margin-bottom: 0.5rem;
-        }}
-        .note-title {{
-            margin: 0 0 0.7rem 0;
-            color: #143657;
-            font-size: 1.35rem;
-        }}
-        .note-block {{
-            background: #f7fbff;
-            border: 1px solid #d9e6f3;
-            border-radius: 10px;
-            padding: 0.6rem 0.8rem;
-            margin-bottom: 0.6rem;
-        }}
-        .note-label {{
-            font-weight: 700;
-            color: #1c3f63;
-            font-size: 0.85rem;
-            margin-bottom: 0.2rem;
-        }}
-        .note-text {{
-            color: #2b3f53;
-            font-size: 0.9rem;
-            line-height: 1.35;
-        }}
-        </style>
-        <div class="note-grid">
-            {card_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.dataframe(rows, use_container_width=True, hide_index=True)
 
    # st.warning(
       #  "Medical disclaimer: Predictions can be incorrect. For severe, worsening, or persistent"
@@ -355,7 +279,7 @@ def render_prediction() -> None:
         """
         <div class="section-card">
             <h2 class="section-title">Prediction</h2>
-            <p class="lead">Upload an image to get the predicted class and confidence.</p>
+            <p class="lead">Upload an image to get the predicted class, confidence.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -397,7 +321,7 @@ def render_prediction() -> None:
         preview = Image.open(uploaded).convert("RGB")
         show_col, result_col = st.columns([1.1, 1], gap="large")
         with show_col:
-            st.image(preview, caption="Uploaded image", width=450)
+            st.image(preview, caption="Uploaded image", use_container_width=True)
         uploaded.seek(0)
         image_batch = preprocess_image(uploaded)
     except ValueError as exc:
@@ -419,8 +343,7 @@ def render_prediction() -> None:
     confident, quality_message = get_prediction_quality(top3_for_quality)
     with result_col:
         st.metric("Predicted class", final_label)
-        if final_label != "unknown":
-            st.metric("Confidence", f"{final_prob * 100:.2f}%")
+        st.metric("Confidence", f"{final_prob * 100:.2f}%")
         if adjustment_note:
             st.caption(adjustment_note)
         if not confident:
@@ -435,10 +358,9 @@ def render_prediction() -> None:
             if preventive_text:
                 st.success(f"Preventive measures: {preventive_text}")
 
-    if final_label != "unknown":
-        st.info(
-            "If symptoms are severe, worsening, or persistent, consult a dermatologist or healthcare professional."
-        )
+    st.info(
+        "If symptoms are severe, worsening, or persistent, consult a dermatologist or healthcare professional."
+    )
 
 
 def main() -> None:
