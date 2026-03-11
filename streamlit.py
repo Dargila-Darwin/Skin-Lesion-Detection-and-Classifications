@@ -6,12 +6,13 @@ Run:
 """
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import json
 
 import numpy as np
 import streamlit as st
 import tensorflow as tf
+import requests
 from PIL import Image, UnidentifiedImageError
 
 CLASS_NAMES = [
@@ -85,6 +86,8 @@ PREVENTIVE_MEASURES = {
 }
 
 DEFAULT_MODEL_PATH = "models/efficientnet_skin.keras"
+MODEL_DRIVE_URL = "https://drive.google.com/file/d/10wzgEbrIAgMlP8FkWgD1o1vflUBLb0e9/view?usp=drive_link"
+TEMP_DRIVE_URL = "https://drive.google.com/file/d/1j2YETUUUrSp4PGykPLvaAzSHyycNj5qU/view?usp=drive_link"
 IMG_SIZE = 224
 CONF_THRESHOLD_DEFAULT = 0.75
 CONF_THRESHOLD_NEVI = 0.75
@@ -111,6 +114,32 @@ def load_temperature_cached(temperature_path: str) -> float:
         return float(data.get("temperature", 1.0))
     except Exception:
         return 1.0
+
+
+def _extract_drive_id(url: str) -> Optional[str]:
+    if "/d/" in url:
+        return url.split("/d/")[1].split("/")[0]
+    if "id=" in url:
+        return url.split("id=")[1].split("&")[0]
+    return None
+
+
+def download_model_from_drive(url: str, dest_path: Path) -> bool:
+    file_id = _extract_drive_id(url)
+    if not file_id:
+        return False
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with requests.get(download_url, stream=True, timeout=60) as response:
+            response.raise_for_status()
+            with dest_path.open("wb") as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        return True
+    except Exception:
+        return False
 
 
 def apply_temperature_scaling(probs: np.ndarray, temperature: float) -> np.ndarray:
@@ -369,8 +398,19 @@ def render_prediction() -> None:
 
     model_file = Path(model_path)
     if not model_file.exists():
-        st.error(f"Model file not found: {model_file}")
-        return
+        with st.spinner("Model file missing. Downloading..."):
+            ok = download_model_from_drive(MODEL_DRIVE_URL, model_file)
+        if not ok or not model_file.exists():
+            st.error(
+                "Model file not found and download failed. "
+                "Please check the Drive link or add the model file locally."
+            )
+            return
+
+    temperature_file = Path(temperature_path)
+    if not temperature_file.exists():
+        with st.spinner("Temperature file missing. Downloading..."):
+            download_model_from_drive(TEMP_DRIVE_URL, temperature_file)
 
     try:
         with st.spinner("Loading model..."):
