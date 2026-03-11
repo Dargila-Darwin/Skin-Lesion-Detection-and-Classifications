@@ -255,18 +255,95 @@ def render_about() -> None:
         unsafe_allow_html=True,
     )
 
-    rows = []
+    cards = []
     for disease in CLASS_NAMES:
-        rows.append(
-            {
-                "Disease": disease,
-                "Description": CLASS_INFO.get(disease, "No description available."),
-                "Preventive Measures": PREVENTIVE_MEASURES.get(
+        if disease == "unknown":
+            continue
+        cards.append(
+            (
+                disease,
+                CLASS_INFO.get(disease, "No description available."),
+                PREVENTIVE_MEASURES.get(
                     disease, "Consult a healthcare professional for guidance."
                 ),
-            }
+            )
         )
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    card_html = "\n".join(
+        f"""
+        <div class="note-card">
+            <div class="note-pill">Condition Profile</div>
+            <h3 class="note-title">{disease}</h3>
+            <div class="note-block">
+                <div class="note-label">Description</div>
+                <div class="note-text">{desc}</div>
+            </div>
+            <div class="note-block">
+                <div class="note-label">Preventive Measures</div>
+                <div class="note-text">{prev}</div>
+            </div>
+        </div>
+        """
+        for disease, desc, prev in cards
+    )
+
+    st.markdown(
+        f"""
+        <style>
+        .note-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.2rem;
+            margin-top: 0.6rem;
+        }}
+        .note-card {{
+            background: #ffffff;
+            border: 1px solid #d7e3ef;
+            border-radius: 14px;
+            padding: 1.1rem 1.2rem;
+            box-shadow: 0 8px 18px rgba(15, 39, 66, 0.08);
+        }}
+        .note-pill {{
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.7rem;
+            border-radius: 999px;
+            background: #e7f7ef;
+            color: #0f6b3d;
+            font-weight: 600;
+            font-size: 0.75rem;
+            margin-bottom: 0.5rem;
+        }}
+        .note-title {{
+            margin: 0 0 0.7rem 0;
+            color: #143657;
+            font-size: 1.35rem;
+        }}
+        .note-block {{
+            background: #f7fbff;
+            border: 1px solid #d9e6f3;
+            border-radius: 10px;
+            padding: 0.6rem 0.8rem;
+            margin-bottom: 0.6rem;
+        }}
+        .note-label {{
+            font-weight: 700;
+            color: #1c3f63;
+            font-size: 0.85rem;
+            margin-bottom: 0.2rem;
+        }}
+        .note-text {{
+            color: #2b3f53;
+            font-size: 0.9rem;
+            line-height: 1.35;
+        }}
+        </style>
+        <div class="note-grid">
+            {card_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
    # st.warning(
       #  "Medical disclaimer: Predictions can be incorrect. For severe, worsening, or persistent"
