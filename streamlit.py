@@ -124,20 +124,51 @@ def _extract_drive_id(url: str) -> Optional[str]:
     return None
 
 
+def _looks_like_html(sample: bytes) -> bool:
+    head = sample.lstrip().lower()
+    return head.startswith(b"<!doctype") or head.startswith(b"<html")
+
+
+def _validate_download(dest_path: Path) -> bool:
+    if not dest_path.exists() or dest_path.stat().st_size < 1024:
+        return False
+    with dest_path.open("rb") as f:
+        sample = f.read(2048)
+    if _looks_like_html(sample):
+        return False
+    return True
+
+
 def download_model_from_drive(url: str, dest_path: Path) -> bool:
     file_id = _extract_drive_id(url)
     if not file_id:
         return False
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    base_url = "https://drive.google.com/uc?export=download"
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with requests.get(download_url, stream=True, timeout=60) as response:
+        session = requests.Session()
+        response = session.get(base_url, params={"id": file_id}, stream=True, timeout=60)
+        response.raise_for_status()
+
+        confirm_token = None
+        for key, value in response.cookies.items():
+            if key.startswith("download_warning"):
+                confirm_token = value
+                break
+        if confirm_token:
+            response = session.get(
+                base_url,
+                params={"id": file_id, "confirm": confirm_token},
+                stream=True,
+                timeout=60,
+            )
             response.raise_for_status()
-            with dest_path.open("wb") as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-        return True
+
+        with dest_path.open("wb") as f:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+        return _validate_download(dest_path)
     except Exception:
         return False
 
@@ -406,6 +437,17 @@ def render_prediction() -> None:
                 "Please check the Drive link or add the model file locally."
             )
             return
+    else:
+        if not _validate_download(model_file):
+            model_file.unlink(missing_ok=True)
+            with st.spinner("Model file invalid. Re-downloading..."):
+                ok = download_model_from_drive(MODEL_DRIVE_URL, model_file)
+            if not ok or not model_file.exists():
+                st.error(
+                    "Model file is invalid and re-download failed. "
+                    "Please check the Drive link or add the model file locally."
+                )
+                return
 
     temperature_file = Path(temperature_path)
     if not temperature_file.exists():
