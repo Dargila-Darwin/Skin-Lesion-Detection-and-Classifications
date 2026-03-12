@@ -102,7 +102,7 @@ NEVI_FALLBACK_MAX_GAP = 0.20
 
 
 @st.cache_resource
-def load_model_cached(model_path: str) -> tf.keras.Model:
+def load_model_cached(model_path: str, model_mtime: float) -> tf.keras.Model:
     return tf.keras.models.load_model(model_path, compile=False)
 
 
@@ -152,6 +152,17 @@ def download_model_from_drive(url: str, dest_path: Path) -> bool:
         return _validate_download(dest_path)
     except Exception:
         return False
+
+
+def load_model_with_retry(model_file: Path) -> tf.keras.Model:
+    try:
+        return load_model_cached(str(model_file), model_file.stat().st_mtime)
+    except Exception:
+        model_file.unlink(missing_ok=True)
+        ok = download_model_from_drive(MODEL_DRIVE_URL, model_file)
+        if not ok or not model_file.exists():
+            raise
+        return load_model_cached(str(model_file), model_file.stat().st_mtime)
 
 
 def apply_temperature_scaling(probs: np.ndarray, temperature: float) -> np.ndarray:
@@ -429,6 +440,13 @@ def render_prediction() -> None:
                     "Please check the Drive link or add the model file locally."
                 )
                 return
+    with st.caption("Model file"):
+        try:
+            st.text(
+                f"{model_file.name} • {model_file.stat().st_size / (1024 * 1024):.2f} MB"
+            )
+        except OSError:
+            st.text(f"{model_file.name} • size unavailable")
 
     temperature_file = Path(temperature_path)
     if not temperature_file.exists():
@@ -437,7 +455,7 @@ def render_prediction() -> None:
 
     try:
         with st.spinner("Loading model..."):
-            model = load_model_cached(str(model_file))
+            model = load_model_with_retry(model_file)
     except Exception as exc:
         st.error(f"Error loading model: {exc}")
         return
