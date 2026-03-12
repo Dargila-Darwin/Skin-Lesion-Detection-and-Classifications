@@ -12,7 +12,7 @@ import json
 import numpy as np
 import streamlit as st
 import tensorflow as tf
-import requests
+import gdown
 from PIL import Image, UnidentifiedImageError
 
 CLASS_NAMES = [
@@ -85,7 +85,9 @@ PREVENTIVE_MEASURES = {
     ),
 }
 
-DEFAULT_MODEL_PATH = "models/efficientnet_skin.keras"
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_DIR = BASE_DIR / "Model"
+DEFAULT_MODEL_PATH = str(MODEL_DIR / "efficient_skin.keras")
 MODEL_DRIVE_URL = "https://drive.google.com/file/d/10wzgEbrIAgMlP8FkWgD1o1vflUBLb0e9/view?usp=drive_link"
 TEMP_DRIVE_URL = "https://drive.google.com/file/d/1j2YETUUUrSp4PGykPLvaAzSHyycNj5qU/view?usp=drive_link"
 IMG_SIZE = 224
@@ -143,31 +145,10 @@ def download_model_from_drive(url: str, dest_path: Path) -> bool:
     file_id = _extract_drive_id(url)
     if not file_id:
         return False
-    base_url = "https://drive.google.com/uc?export=download"
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        session = requests.Session()
-        response = session.get(base_url, params={"id": file_id}, stream=True, timeout=60)
-        response.raise_for_status()
-
-        confirm_token = None
-        for key, value in response.cookies.items():
-            if key.startswith("download_warning"):
-                confirm_token = value
-                break
-        if confirm_token:
-            response = session.get(
-                base_url,
-                params={"id": file_id, "confirm": confirm_token},
-                stream=True,
-                timeout=60,
-            )
-            response.raise_for_status()
-
-        with dest_path.open("wb") as f:
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
+        gdown_url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(gdown_url, str(dest_path), quiet=False)
         return _validate_download(dest_path)
     except Exception:
         return False
@@ -502,7 +483,8 @@ def render_prediction() -> None:
     confident, quality_message = get_prediction_quality(top3_for_quality)
     with result_col:
         st.metric("Predicted class", final_label)
-        st.metric("Confidence", f"{final_prob * 100:.2f}%")
+        if final_label != "unknown":
+            st.metric("Confidence", f"{final_prob * 100:.2f}%")
         if adjustment_note:
             st.caption(adjustment_note)
         if not confident:
@@ -517,9 +499,10 @@ def render_prediction() -> None:
             if preventive_text:
                 st.success(f"Preventive measures: {preventive_text}")
 
-    st.info(
-        "If symptoms are severe, worsening, or persistent, consult a dermatologist or healthcare professional."
-    )
+    if final_label != "unknown":
+        st.info(
+            "If symptoms are severe, worsening, or persistent, consult a dermatologist or healthcare professional."
+        )
 
 
 def main() -> None:
