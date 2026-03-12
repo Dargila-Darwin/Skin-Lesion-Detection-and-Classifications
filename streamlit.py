@@ -88,8 +88,8 @@ PREVENTIVE_MEASURES = {
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "Model"
 DEFAULT_MODEL_PATH = str(MODEL_DIR / "efficient_skin.keras")
-MODEL_DRIVE_URL = "https://drive.google.com/file/d/10wzgEbrIAgMlP8FkWgD1o1vflUBLb0e9/view?usp=drive_link"
-TEMP_DRIVE_URL = "https://drive.google.com/file/d/1j2YETUUUrSp4PGykPLvaAzSHyycNj5qU/view?usp=drive_link"
+MODEL_DRIVE_URL = "https://drive.google.com/file/d/1UUi_GUnsZJtvcbCl3lKu1nTRaz7ZIbQG/view?usp=drive_link"
+TEMP_DRIVE_URL = "https://drive.google.com/file/d/1VRMO2jq7rCbyxuyG5alc1Xa7tZBq-kLf/view?usp=drive_link"
 IMG_SIZE = 224
 CONF_THRESHOLD_DEFAULT = 0.75
 CONF_THRESHOLD_NEVI = 0.75
