@@ -87,9 +87,9 @@ PREVENTIVE_MEASURES = {
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "Model"
-DEFAULT_MODEL_PATH = str(MODEL_DIR / "efficient_skin_1.keras")
-MODEL_DRIVE_URL = "https://drive.google.com/file/d/18yszajZvwtwtj_BBCKJ0g7cCF5Qbd_nF/view?usp=drive_link"
-TEMP_DRIVE_URL = "https://drive.google.com/file/d/1a823eaF-vkGdVE_Iq_CGl9ey1lz1qu1W/view?usp=drive_link"
+DEFAULT_MODEL_PATH = str(MODEL_DIR / "skin_model.tflite")
+MODEL_DRIVE_URL = ""
+TEMP_DRIVE_URL = ""
 IMG_SIZE = 224
 CONF_THRESHOLD_DEFAULT = 0.75
 CONF_THRESHOLD_NEVI = 0.75
@@ -102,8 +102,12 @@ NEVI_FALLBACK_MAX_GAP = 0.20
 
 
 @st.cache_resource
-def load_model_cached(model_path: str, model_mtime: float) -> tf.keras.Model:
-    return tf.keras.models.load_model(model_path, compile=False)
+def load_tflite_cached(model_path: str, model_mtime: float):
+    interpreter = tf.lite.Interpreter(model_path=model_path)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    return interpreter, input_details, output_details
 
 
 @st.cache_data
@@ -142,6 +146,8 @@ def _validate_download(dest_path: Path) -> bool:
 
 
 def download_model_from_drive(url: str, dest_path: Path) -> bool:
+    if not url:
+        return False
     file_id = _extract_drive_id(url)
     if not file_id:
         return False
@@ -154,15 +160,15 @@ def download_model_from_drive(url: str, dest_path: Path) -> bool:
         return False
 
 
-def load_model_with_retry(model_file: Path) -> tf.keras.Model:
+def load_tflite_with_retry(model_file: Path):
     try:
-        return load_model_cached(str(model_file), model_file.stat().st_mtime)
+        return load_tflite_cached(str(model_file), model_file.stat().st_mtime)
     except Exception:
         model_file.unlink(missing_ok=True)
         ok = download_model_from_drive(MODEL_DRIVE_URL, model_file)
         if not ok or not model_file.exists():
             raise
-        return load_model_cached(str(model_file), model_file.stat().st_mtime)
+        return load_tflite_cached(str(model_file), model_file.stat().st_mtime)
 
 
 def apply_temperature_scaling(probs: np.ndarray, temperature: float) -> np.ndarray:
@@ -187,14 +193,45 @@ def preprocess_image(uploaded_file, img_size: int = IMG_SIZE) -> np.ndarray:
     return np.expand_dims(arr, axis=0)
 
 
+def _tflite_predict(
+    interpreter,
+    input_details,
+    output_details,
+    image_batch: np.ndarray,
+) -> np.ndarray:
+    input_info = input_details[0]
+    output_info = output_details[0]
+    input_index = input_info["index"]
+    input_dtype = input_info["dtype"]
+
+    input_data = image_batch
+    if input_dtype != input_data.dtype:
+        scale, zero_point = input_info.get("quantization", (0.0, 0))
+        if scale and input_dtype in (np.uint8, np.int8):
+            input_data = input_data / scale + zero_point
+        input_data = input_data.astype(input_dtype)
+
+    interpreter.set_tensor(input_index, input_data)
+    interpreter.invoke()
+    output = interpreter.get_tensor(output_info["index"])
+    output_data = output[0]
+    output_dtype = output_info["dtype"]
+    if output_dtype in (np.uint8, np.int8):
+        out_scale, out_zero = output_info.get("quantization", (0.0, 0))
+        if out_scale:
+            output_data = (output_data.astype(np.float32) - out_zero) * out_scale
+    return output_data
+
+
 def predict_top_k(
-    model: tf.keras.Model,
+    tflite_bundle,
     image_batch: np.ndarray,
     class_names: List[str],
     temperature: float = 1.0,
     k: int = 3,
 ) -> List[Tuple[str, float]]:
-    probs = model.predict(image_batch, verbose=0)[0]
+    interpreter, input_details, output_details = tflite_bundle
+    probs = _tflite_predict(interpreter, input_details, output_details, image_batch)
     probs = apply_temperature_scaling(probs, temperature)
     top_idx = np.argsort(probs)[::-1][:k]
     return [(class_names[i], float(probs[i])) for i in top_idx]
@@ -416,7 +453,7 @@ def render_prediction() -> None:
 
     config_col, upload_col = st.columns([1, 1.7], gap="large")
     model_path = DEFAULT_MODEL_PATH
-    temp_path_default = str(Path(model_path).with_suffix(".temperature.json"))
+    temp_path_default = str(MODEL_DIR / "efficient_skin.temperature.json")
     temperature_path = temp_path_default
 
     model_file = Path(model_path)
@@ -461,7 +498,7 @@ def render_prediction() -> None:
 
     try:
         with st.spinner("Loading model..."):
-            model = load_model_with_retry(model_file)
+            tflite_bundle = load_tflite_with_retry(model_file)
     except Exception as exc:
         st.error(f"Error loading model: {exc}")
         return
@@ -496,7 +533,7 @@ def render_prediction() -> None:
         return
 
     with st.spinner("Running prediction..."):
-        top3 = predict_top_k(model, image_batch, CLASS_NAMES, temperature=temperature, k=3)
+        top3 = predict_top_k(tflite_bundle, image_batch, CLASS_NAMES, temperature=temperature, k=3)
 
     best_label, best_prob = top3[0]
     final_label, final_prob, adjustment_note = apply_confusion_fallback(top3)
