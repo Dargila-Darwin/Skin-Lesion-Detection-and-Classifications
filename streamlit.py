@@ -442,9 +442,15 @@ def render_prediction() -> None:
                 return
     with st.caption("Model file"):
         try:
-            st.text(
-                f"{model_file.name} • {model_file.stat().st_size / (1024 * 1024):.2f} MB"
-            )
+            size_mb = model_file.stat().st_size / (1024 * 1024)
+            st.text(f"{model_file.name} • {size_mb:.2f} MB")
+            import hashlib
+
+            sha256 = hashlib.sha256()
+            with model_file.open("rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    sha256.update(chunk)
+            st.text(f"SHA256: {sha256.hexdigest()}")
         except OSError:
             st.text(f"{model_file.name} • size unavailable")
 
